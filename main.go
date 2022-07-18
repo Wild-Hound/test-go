@@ -19,10 +19,11 @@ import (
 )
 
 type book struct{
-	ID 		 primitive.ObjectID	`json:"_id,omitempty", bson:"_id",omitempty`
+	ID 	    primitive.ObjectID	`json:"_id,omitempty", bson:"_id",omitempty`
 	Title 	string	`json:"title,omitempty", bson:"title,omitempty"`
 	Author 	string	`json:"author,omitempty", bson:"author,omitempty"`
 	Quantity int	`json:"quantity,omitempty", bson:"quantity,omitempty"`
+	BookId  int 	`json:"book_id", bson:"book_id"`
 }
 var collection *mongo.Collection
 
@@ -50,6 +51,7 @@ defer cancel()
 client, mongoErr := mongo.Connect(ctx, options.Client().ApplyURI(mongoConnectionLink))
 if(mongoErr != nil){
 	fmt.Println("error connecting to mongo")
+	fmt.Println(mongoErr)
 	return
 }
 collection = client.Database(os.Getenv("mongo_db_name")).Collection(os.Getenv("mongo_collection_name"))
