@@ -1,40 +1,87 @@
 package main
 
 import (
+	"context"
+	// "errors"
+	"fmt"
 	"net/http"
+	"os"
+
+	// "strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
-
-	"errors"
-
-	"strconv"
+	"github.com/joho/godotenv"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type book struct{
-	ID 		 int	`json:"id"`
-	Title 	string	`json:"title"`
-	Author 	string	`json:"author"`
-	Quantity int	`json:"quantity"`
+	ID 		 primitive.ObjectID	`json:"_id,omitempty", bson:"_id",omitempty`
+	Title 	string	`json:"title,omitempty", bson:"title,omitempty"`
+	Author 	string	`json:"author,omitempty", bson:"author,omitempty"`
+	Quantity int	`json:"quantity,omitempty", bson:"quantity,omitempty"`
 }
+var collection *mongo.Collection
 
 var books = []book{
-	{ID: 1, Title: "test", Author: "unknown", Quantity: 2},
-	{ID: 2, Title: "test", Author: "unknown", Quantity: 2},
-	{ID: 3, Title: "test", Author: "unknown", Quantity: 2},
+	{Title: "test", Author: "unknown", Quantity: 2},
+	{Title: "test", Author: "unknown", Quantity: 2},
+	{Title: "test", Author: "unknown", Quantity: 2},
 }
 
-func getBookById(id int) (*book, error){
-	for i,b := range books{
-		if(b.ID == id){
-			return &books[i], nil
-		}
-	}
-
-	return nil, errors.New("no book found")
+func init(){
+err := godotenv.Load(".env")
+if err != nil{
+	fmt.Println("error loading .env")
+	return 
 }
+mongoUsername := os.Getenv("mongo_username")
+mongoPassword := os.Getenv("mongo_password")
+mongoConnectionLink := "mongodb+srv://"+mongoUsername+":"+mongoPassword+"@cluster0.2fhtx.mongodb.net/?retryWrites=true&w=majority"
+
+fmt.Println("mongo connection link")
+fmt.Println(mongoConnectionLink)
+
+ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+defer cancel()
+client, mongoErr := mongo.Connect(ctx, options.Client().ApplyURI(mongoConnectionLink))
+if(mongoErr != nil){
+	fmt.Println("error connecting to mongo")
+	return
+}
+collection = client.Database(os.Getenv("mongo_db_name")).Collection(os.Getenv("mongo_collection_name"))
+fmt.Println("mounted DB")
+}
+
+// func getBookById(id int) (*book, error){
+// 	for i,b := range books{
+// 		if(b.ID == id){
+// 			return &books[i], nil
+// 		}
+// 	}
+
+// 	return nil, errors.New("no book found")
+// }
 
 func getBooks(router *gin.Context){
-	router.IndentedJSON(http.StatusOK, books)
+	var mongoBooks []book
+
+	ctx, _:= context.WithTimeout(context.Background(), 10*time.Second)
+	cursor, err := collection.Find(ctx, bson.M{})
+	if(err != nil){
+		router.IndentedJSON(http.StatusInternalServerError, "error while getting data")
+		return
+	}
+	for cursor.Next(ctx){
+		var mongoBook book
+		cursor.Decode(&mongoBook)
+		mongoBooks = append(mongoBooks, mongoBook)
+	}
+
+	router.IndentedJSON(http.StatusOK, mongoBooks)
 }
 
 func createBook(router *gin.Context){
@@ -47,27 +94,52 @@ func createBook(router *gin.Context){
 	router.IndentedJSON(http.StatusCreated, newBook)
 }
 
-func getSingleBook(router *gin.Context){
-	id, convErr := strconv.Atoi(router.Param("id"))
-	if(convErr != nil){
-		router.IndentedJSON(http.StatusBadRequest, "Invalid id")
-		return
-	}
-	book, err := getBookById(id)
+// func getSingleBook(router *gin.Context){
+// 	id, convErr := strconv.Atoi(router.Param("id"))
+// 	if(convErr != nil){
+// 		router.IndentedJSON(http.StatusBadRequest, "Invalid id")
+// 		return
+// 	}
+// 	book, err := getBookById(id)
 
-	if(err != nil){
-		router.IndentedJSON(http.StatusNotFound, "Book not found")
-		return
-	}
+// 	if(err != nil){
+// 		router.IndentedJSON(http.StatusNotFound, "Book not found")
+// 		return
+// 	}
 
-	router.IndentedJSON(http.StatusOK, book)
-}
+// 	router.IndentedJSON(http.StatusOK, book)
+// }
+
+// func checkoutBook(router *gin.Context){
+// 	srtId, paramExists := router.GetQuery("id")
+// 	id, err := strconv.Atoi(srtId)
+
+// 	if(err != nil || !paramExists){
+// 		router.IndentedJSON(http.StatusBadRequest,"Invalid id")
+// 		return
+// 	}
+
+// 	book,bookErr := getBookById(id)
+// 	if(bookErr != nil){
+// 		router.IndentedJSON(http.StatusNotFound,"book not found")
+// 		return
+// 	}
+
+// 	if(book.Quantity <= 0){
+// 		router.IndentedJSON(http.StatusNotFound,"book is no longer available")
+// 		return
+// 	}
+
+// 	book.Quantity -= 1
+// 	router.IndentedJSON(http.StatusOK, book)
+// }
 
 func main(){
 	router := gin.Default()
 
 	router.GET("/books", getBooks)
 	router.POST("/books", createBook)
-	router.GET("/book/:id", getSingleBook)
+	// router.GET("/book/:id", getSingleBook)
+	// router.GET("/checkout", checkoutBook)
 	router.Run("localhost:5000")
 }
